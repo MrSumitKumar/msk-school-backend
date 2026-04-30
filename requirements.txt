@@ -7,4 +7,5 @@ psycopg2-binary>=2.9
 python-decouple>=3.8
 razorpay>=1.4.1
 requests>=2.31.0
-mysql-connector-python>=8.0.33 reportlab<4
+mysql-connector-python>=8.0.33
+reportlab<4
