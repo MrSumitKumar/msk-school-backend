@@ -1,7 +1,6 @@
 django>=4.2
 djangorestframework>=3.14
 djangorestframework-simplejwt>=5.3
-django-cors-headers>=4.3
 Pillow>=10.0
 psycopg2-binary>=2.9
 python-decouple>=3.8
@@ -11,3 +10,4 @@ mysql-connector-python>=8.0.33
 reportlab<4
 gunicorn
 whitenoise
+django-cors-headers

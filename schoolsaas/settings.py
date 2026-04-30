@@ -2,6 +2,8 @@ from pathlib import Path
 from datetime import timedelta
 from decouple import config, Csv
 import os
+from corsheaders.defaults import default_headers
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -162,9 +164,10 @@ if DEBUG:
 else:
     # Production (deployed frontend)
     CORS_ALLOWED_ORIGINS = [
-        'https://msk-school-frontend.vercel.app',
+        "https://msk-school-frontend.vercel.app",
     ]
-    CORS_ALLOW_ALL_ORIGINS = False
+
+    CORS_ALLOW_CREDENTIALS = True
 
 
 # Optional (enable only if needed, e.g. authentication with cookies)
@@ -186,3 +189,13 @@ PHONEPE_API_URL = config('PHONEPE_API_URL', default='https://api-preprod.phonepe
 BINANCE_API_KEY = config('BINANCE_API_KEY', default='')
 BINANCE_API_SECRET = config('BINANCE_API_SECRET', default='')
 BINANCE_API_URL = config('BINANCE_API_URL', default='https://bpay.binanceapi.com/binancepay/openapi/v2/order')
+
+
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'authorization',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://msk-school-frontend.vercel.app",
+]
