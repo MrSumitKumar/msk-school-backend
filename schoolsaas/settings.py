@@ -146,16 +146,30 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# CORS
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:5174',
-    'http://localhost:3000',
-]
+# CORS Configuration
+
+if DEBUG:
+    # Development (local + testing)
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5174',
+        'http://localhost:3000',
+    ]
+    CORS_ALLOW_ALL_ORIGINS = False
+
+else:
+    # Production (deployed frontend)
+    CORS_ALLOWED_ORIGINS = [
+        'https://msk-school-frontend.vercel.app',
+    ]
+    CORS_ALLOW_ALL_ORIGINS = False
+
+
+# Optional (enable only if needed, e.g. authentication with cookies)
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True # Enabled for mobile testing
+
 
 # ─── Payment Gateways ────────────────────────────────
 # Razorpay
