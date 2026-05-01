@@ -9,7 +9,7 @@ from datetime import timedelta
 from .models import School, SubscriptionPlan, Subscription, Payment, Invoice, Notification, Branch
 from .serializers import (
     SchoolSerializer, SchoolCreateSerializer, SubscriptionPlanSerializer, SchoolSettingsSerializer,
-    SubscriptionSerializer, PaymentSerializer, InvoiceSerializer, NotificationSerializer, BranchSerializer
+    SubscriptionSerializer, SubscriptionHistorySerializer, PaymentSerializer, InvoiceSerializer, NotificationSerializer, BranchSerializer
 )
 from accounts.permissions import IsSuperAdmin, IsSchoolAdmin
 from audit.services import log_action
@@ -120,19 +120,35 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        school_id = request.data.get('school')
-        if not school_id:
-            return Response({'error': 'School ID is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Use update_or_create to handle the OneToOneField constraint gracefully
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        data = serializer.validated_data
+        school = data.get('school')
+        plan = data.get('plan')
+        amount = request.data.get('amount', 0)
+
         subscription, created = Subscription.objects.update_or_create(
-            school_id=school_id,
-            defaults=serializer.validated_data
+            school=school,
+            defaults={
+                'plan': plan,
+                'start_date': data.get('start_date'),
+                'end_date': data.get('end_date'),
+                'status': data.get('status'),
+                'is_active': data.get('status') in ['active', 'trial'],
+            }
         )
         
+        SubscriptionHistory.objects.create(
+            school=school,
+            plan=plan,
+            start_date=subscription.start_date,
+            end_date=subscription.end_date,
+            status=subscription.status,
+            action='activation' if created else 'update',
+            amount=amount
+        )
+
         self._sync_school(subscription)
         
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
@@ -143,7 +159,21 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
+        
+        amount = request.data.get('amount', 0)
+
         instance = serializer.save()
+        
+        SubscriptionHistory.objects.create(
+            school=instance.school,
+            plan=instance.plan,
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            status=instance.status,
+            action='update',
+            amount=amount
+        )
+
         self._sync_school(instance)
         return Response(SubscriptionSerializer(instance).data)
 
@@ -157,15 +187,36 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
 class PaymentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    queryset = Payment.objects.all().order_by('-payment_date')
     serializer_class = PaymentSerializer
     pagination_class = None
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'super_admin':
+            return Payment.objects.all().order_by('-payment_date')
+        return Payment.objects.filter(school_id=user.school_id).order_by('-payment_date')
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    queryset = Invoice.objects.all().order_by('-created_at')
     serializer_class = InvoiceSerializer
     pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'super_admin':
+            return Invoice.objects.all().order_by('-created_at')
+        return Invoice.objects.filter(payment__school_id=user.school_id).order_by('-created_at')
+
+class SubscriptionHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = SubscriptionHistorySerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'super_admin':
+            return SubscriptionHistory.objects.all().order_by('-created_at')
+        return SubscriptionHistory.objects.filter(school_id=user.school_id).order_by('-created_at')
 
 class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -254,7 +305,7 @@ def _activate_subscription_and_invoice(payment):
     school = payment.school
 
     # 1. Create / update subscription
-    sub, _ = Subscription.objects.update_or_create(
+    sub, created = Subscription.objects.update_or_create(
         school=school,
         defaults={
             'plan': plan,
@@ -270,6 +321,17 @@ def _activate_subscription_and_invoice(payment):
     school.subscription_start = sub.start_date
     school.subscription_end = sub.end_date
     school.save()
+
+    # 2.5 Log History
+    SubscriptionHistory.objects.create(
+        school=school,
+        plan=plan,
+        start_date=sub.start_date,
+        end_date=sub.end_date,
+        status='active',
+        action='renewal' if not created else 'activation',
+        amount=payment.amount
+    )
 
     # 3. Mark payment completed & set invoice
     invoice_number = f"INV-{school.id}-{payment.id}-{uuid.uuid4().hex[:6].upper()}"
@@ -488,6 +550,18 @@ def create_phonepe_order(request):
         plan = SubscriptionPlan.objects.get(id=plan_id)
     except SubscriptionPlan.DoesNotExist:
         return Response({'error': 'Plan not found'}, status=404)
+
+    # Enforce 15-day restriction
+    existing_sub = Subscription.objects.filter(school=school, status__in=['active', 'trial']).first()
+    if existing_sub:
+        today = timezone.now().date()
+        if existing_sub.end_date > today:
+            days_remaining = (existing_sub.end_date - today).days
+            if days_remaining > 15:
+                return Response({
+                    'error': 'Upgrade available only when plan is near expiry (within 15 days).',
+                    'days_remaining': days_remaining
+                }, status=status.HTTP_400_BAD_REQUEST)
 
     transaction_id = f"MT{uuid.uuid4().hex[:14].upper()}"
     amount_in_paise = int(plan.price * 100)

@@ -5,6 +5,7 @@ from . import views
 router = DefaultRouter()
 router.register(r'plans', views.SubscriptionPlanViewSet, basename='plan')
 router.register(r'subscriptions', views.SubscriptionViewSet, basename='subscription')
+router.register(r'subscription-history', views.SubscriptionHistoryViewSet, basename='subscription-history')
 router.register(r'payments', views.PaymentViewSet, basename='payment')
 router.register(r'invoices', views.InvoiceViewSet, basename='invoice')
 router.register(r'notifications', views.NotificationViewSet, basename='notification')
