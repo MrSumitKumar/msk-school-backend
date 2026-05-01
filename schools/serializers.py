@@ -1,6 +1,6 @@
 from rest_framework import serializers
 import json
-from .models import School, SubscriptionPlan, Subscription, SubscriptionHistory, Payment, Invoice, Notification, Branch
+from .models import School, SubscriptionPlan, Subscription, Payment, Invoice, Notification, Branch
 
 
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
@@ -115,20 +115,10 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         fields = '__all__'
-        extra_kwargs = {
-            'school': {'validators': []}
-        }
 
     def get_school_owner(self, obj):
         owner = obj.school.users.filter(role='school_admin').first()
         return owner.full_name if owner else None
-
-class SubscriptionHistorySerializer(serializers.ModelSerializer):
-    plan_name = serializers.CharField(source='plan.name', read_only=True)
-
-    class Meta:
-        model = SubscriptionHistory
-        fields = '__all__'
 
 class PaymentSerializer(serializers.ModelSerializer):
     school_name = serializers.CharField(source='school.name', read_only=True)
